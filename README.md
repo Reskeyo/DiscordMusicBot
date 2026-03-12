@@ -26,7 +26,7 @@ Ein selbst-gehosteter Discord Musikbot mit YouTube & Spotify Support. Funktionie
 ### Linux (empfohlen)
 
 ```bash
-git clone https://github.com/DEIN_USER/DiscordMusicBot.git
+git clone https://github.com/Reskeyo/DiscordMusicBot.git
 cd DiscordMusicBot
 chmod +x setup.sh
 ./setup.sh
