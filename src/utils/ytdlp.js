@@ -106,7 +106,7 @@ async function getVideoInfo(url) {
     '--skip-download'
   ];
 
-  const stdout = await execYtDlp(args);
+  const stdout = await execYtDlp(args, 30000);
   const info = JSON.parse(stdout);
   return {
     title: info.title,
@@ -146,18 +146,35 @@ async function getPlaylistInfo(url) {
 }
 
 /**
- * Erstellt einen Audio-Stream (Readable) über yt-dlp → ffmpeg.
+ * Erstellt einen Audio-Stream (Readable) über yt-dlp → ffmpeg Pipe.
  * Unterstützt Seeking über seekSeconds.
+ *
+ * yt-dlp downloadet das Audio (handhabt YouTube-Throttling/Range-Requests)
+ * und piped zu stdout. ffmpeg konvertiert zu Raw PCM.
+ *
+ * Für lange Videos werden Retry-/Timeout-Flags gesetzt, damit yt-dlp
+ * zuverlässig den gesamten Download abwickelt.
  */
 function createAudioStream(url, seekSeconds = 0) {
-  // yt-dlp holt die beste Audio-URL und piped zu stdout
+  // yt-dlp holt das beste Audio-Format und piped zu stdout.
+  // Resilience-Flags für lange Videos / instabile Verbindungen:
+  //   --retries           → Gesamtversuch-Wiederholungen
+  //   --fragment-retries  → Wiederholungen pro HLS/DASH-Fragment
+  //   --socket-timeout    → Timeout für hängende Verbindungen (Sekunden)
+  //   --buffer-size       → Download-Buffer pro Read
+  //   --no-part           → Keine .part-Dateien (relevant bei Pipe-Output)
   const ytdlpArgs = [
     url,
     '-f', 'ba/b',
     '-o', '-',
     '--no-warnings',
     '--no-playlist',
-    '--quiet'
+    '--quiet',
+    '--retries', '10',
+    '--fragment-retries', '10',
+    '--socket-timeout', '30',
+    '--buffer-size', '16K',
+    '--no-part'
   ];
 
   // ffmpeg konvertiert zu Raw PCM (s16le) — damit funktioniert inlineVolume
@@ -192,6 +209,16 @@ function createAudioStream(url, seekSeconds = 0) {
 
   // Verhindere unhandled error auf stdin wenn yt-dlp frühzeitig beendet
   ffmpeg.stdin.on('error', () => {});
+
+  // Debug: Log yt-dlp und ffmpeg exit
+  ytdlp.on('close', (code, signal) => {
+    console.log(`[Stream] yt-dlp beendet — code: ${code}, signal: ${signal || 'none'}`);
+  });
+  ffmpeg.on('close', (code, signal) => {
+    if (code !== 0 && signal !== 'SIGTERM') {
+      console.error(`[Stream] ffmpeg unerwartet beendet — code: ${code}, signal: ${signal}`);
+    }
+  });
 
   // Cleanup-Funktion anhängen
   ffmpeg.stdout.cleanup = () => {

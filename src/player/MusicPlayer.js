@@ -45,13 +45,21 @@ class MusicPlayer {
       controlMessage: null
     };
 
+    state.audioPlayer.on('stateChange', (oldState, newState) => {
+      console.log(`[AudioPlayer] ${oldState.status} → ${newState.status}`);
+      if (newState.status === AudioPlayerStatus.Idle && oldState.status !== AudioPlayerStatus.Idle) {
+        console.log(`[AudioPlayer] Went Idle from ${oldState.status} — resource ended or errored`);
+      }
+    });
+
     state.audioPlayer.on(AudioPlayerStatus.Idle, () => {
       this._killProcesses(state);
       this._onSongEnd(guildId);
     });
 
     state.audioPlayer.on('error', (error) => {
-      console.error(`Audio Player Error [${guildId}]:`, error);
+      console.error(`Audio Player Error [${guildId}]:`, error.message);
+      console.error(`  Resource: ${error.resource?.playbackDuration}ms played`);
       this._killProcesses(state);
       if (state.textChannel) {
         state.textChannel.send({ embeds: [createErrorEmbed(`Fehler beim Abspielen: ${error.message}`)] });
